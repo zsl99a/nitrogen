@@ -8,16 +8,27 @@ use nitrogen_utils::{channel_sender_with_sink, framed_message_pack};
 
 use crate::{Error, Message, Negotiate, Result, Session};
 
+// RpcServiceClient 通过 rpc_service 自动实现
+
 #[async_trait::async_trait]
-pub trait ServiceClient<Req: serde::Serialize + Send + 'static, Resp: serde::de::DeserializeOwned + Send + 'static> {
+pub trait RpcServiceClient<Req, Resp>
+where
+    Req: serde::Serialize + Send + 'static,
+    Resp: serde::de::DeserializeOwned + Send + 'static,
+{
     const NAME: &'static str;
 
     fn tx(&self) -> mpsc::Sender<(Req, oneshot::Sender<Resp>)>;
 
-    fn spawn(self, mut session: Session, mut rx: mpsc::Receiver<(Req, oneshot::Sender<Resp>)>) -> Self
+    fn session(&self) -> &Session;
+
+    #[doc(hidden)]
+    fn spawn(self, mut rx: mpsc::Receiver<(Req, oneshot::Sender<Resp>)>) -> Self
     where
         Self: Sized,
     {
+        let mut session = self.session().clone();
+
         tokio::spawn(async move {
             let framed_io = session.new_stream(Negotiate { name: Self::NAME.into() }).await?;
 
@@ -62,6 +73,7 @@ pub trait ServiceClient<Req: serde::Serialize + Send + 'static, Resp: serde::de:
         self
     }
 
+    #[doc(hidden)]
     async fn request(&self, req: Req) -> Result<Resp> {
         let (tx, rx) = oneshot::channel::<Resp>();
         self.tx()

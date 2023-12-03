@@ -268,6 +268,7 @@ fn make_ext_impl(input: &ItemTrait) -> proc_macro2::TokenStream {
 /// #[derive(Clone)]
 /// pub struct MyServiceClient {
 ///     tx: futures::channel::mpsc::Sender<(MyServiceRequest, futures::channel::oneshot::Sender<MyServiceResponse>)>,
+///     session: nitrogen::Session,
 /// }
 fn make_client_struct(input: &ItemTrait) -> proc_macro2::TokenStream {
     let client_ident = make_client_ident(input);
@@ -278,6 +279,7 @@ fn make_client_struct(input: &ItemTrait) -> proc_macro2::TokenStream {
         #[derive(Clone)]
         pub struct #client_ident {
             tx: futures::channel::mpsc::Sender<(#request_enum_ident, futures::channel::oneshot::Sender<#response_enum_ident>)>,
+            session: nitrogen::Session,
         }
     );
 
@@ -287,7 +289,7 @@ fn make_client_struct(input: &ItemTrait) -> proc_macro2::TokenStream {
 /// impl MyServiceClient {
 ///     pub fn new(session: Session) -> Self {
 ///         use futures::channel::{mpsc, oneshot};
-///         use nitrogen::ServiceClient;
+///         use nitrogen::RpcServiceClient;
 ///         let (tx, rx) = mpsc::channel::<(MyServiceRequest, oneshot::Sender<MyServiceResponse>)>(128);
 ///         Self { tx }.spawn(session, rx)
 ///     }
@@ -301,9 +303,9 @@ fn make_client_impl_new(input: &ItemTrait) -> proc_macro2::TokenStream {
         impl #client_ident {
             pub fn new(session: nitrogen::Session) -> Self {
                 use futures::channel::{mpsc, oneshot};
-                use nitrogen::ServiceClient;
+                use nitrogen::RpcServiceClient;
                 let (tx, rx) = mpsc::channel::<(#request_enum_ident, oneshot::Sender<#response_enum_ident>)>(128);
-                Self { tx }.spawn(session, rx)
+                Self { tx, session }.spawn(rx)
             }
         }
     );
@@ -311,10 +313,14 @@ fn make_client_impl_new(input: &ItemTrait) -> proc_macro2::TokenStream {
     output
 }
 
-/// impl nitrogen::ServiceClient<MyServiceRequest, MyServiceResponse> for MyServiceClient {
+/// impl nitrogen::RpcServiceClient<MyServiceRequest, MyServiceResponse> for MyServiceClient {
 ///     const NAME: &'static str = "MyService";
 ///     fn tx(&self) -> futures::channel::mpsc::Sender<(MyServiceRequest, futures::channel::oneshot::Sender<MyServiceResponse>)> {
 ///         self.tx.clone()
+///     }
+///
+///     fn session(&self) -> &nitrogen::Session {
+///         &self.session
 ///     }
 /// }
 fn make_client_impl_trait(input: &ItemTrait) -> proc_macro2::TokenStream {
@@ -324,10 +330,14 @@ fn make_client_impl_trait(input: &ItemTrait) -> proc_macro2::TokenStream {
     let response_enum_ident = make_response_enum_ident(input);
 
     let output = quote!(
-        impl nitrogen::ServiceClient<#request_enum_ident, #response_enum_ident> for #client_ident {
+        impl nitrogen::RpcServiceClient<#request_enum_ident, #response_enum_ident> for #client_ident {
             const NAME: &'static str = stringify!(#trait_ident);
             fn tx(&self) -> futures::channel::mpsc::Sender<(#request_enum_ident, futures::channel::oneshot::Sender<#response_enum_ident>)> {
                 self.tx.clone()
+            }
+
+            fn session(&self) -> &nitrogen::Session {
+                &self.session
             }
         }
     );
@@ -337,7 +347,7 @@ fn make_client_impl_trait(input: &ItemTrait) -> proc_macro2::TokenStream {
 
 /// impl MyServiceClient {
 ///     pub async fn fn_name(&self, arg1: Arg1, arg2: Arg2, arg3: Arg3) -> nitrogen::Result<Return> {
-///         use nitrogen::ServiceClient;
+///         use nitrogen::RpcServiceClient;
 ///         let resp = self.request(MyServiceRequest::FnName(arg1, arg2, arg3)).await?;
 ///         match resp {
 ///             MyServiceResponse::FnName(res) => res,
@@ -346,7 +356,7 @@ fn make_client_impl_trait(input: &ItemTrait) -> proc_macro2::TokenStream {
 ///     }
 ///
 ///     pub async fn fn_name2(&self) -> nitrogen::Result<()> {
-///         use nitrogen::ServiceClient;
+///         use nitrogen::RpcServiceClient;
 ///         let resp = self.request(MyServiceRequest::FnName2).await?;
 ///         match resp {
 ///             MyServiceResponse::FnName2(res) => res,
@@ -362,7 +372,7 @@ fn make_client_impl_fn(input: &ItemTrait) -> proc_macro2::TokenStream {
     let client_impl_fn = input.items.iter().filter_map(|item| {
         if let syn::TraitItem::Fn(item_fn) = item {
             // pub async fn fn_name(&self, arg1: Arg1, arg2: Arg2, arg3: Arg3) -> nitrogen::Result<Return> {
-            //     use nitrogen::ServiceClient;
+            //     use nitrogen::RpcServiceClient;
             //     let resp = self.request(MyServiceRequest::FnName(arg1, arg2, arg3)).await?;
             //     match resp {
             //         MyServiceResponse::FnName(res) => res,
@@ -400,7 +410,7 @@ fn make_client_impl_fn(input: &ItemTrait) -> proc_macro2::TokenStream {
 
             let output = quote!(
                 pub async fn #fn_name_ident(#(#fn_sig_inputs),*) -> nitrogen::Result<#fn_result_ty> {
-                    use nitrogen::ServiceClient;
+                    use nitrogen::RpcServiceClient;
                     let resp = self.request(#resp_args).await?;
                     match resp {
                         #response_enum_ident::#response_item_ident(res) => res,
