@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = [
+    "nitrogen",
+    "nitrogen-utils",
+    "nitrogen-macro",
+    "nitrogen-quic",
+]

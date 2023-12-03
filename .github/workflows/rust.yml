@@ -1,0 +1,32 @@
+name: Rust
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Update system and development tools
+        run: |
+          rustup update
+          cargo update
+          cp .env.template .env;
+
+      - name: Rust Clippy
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy

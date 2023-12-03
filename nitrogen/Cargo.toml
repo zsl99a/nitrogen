@@ -1,0 +1,26 @@
+[package]
+name = "nitrogen"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+nitrogen-utils = { path = "../nitrogen-utils" }
+nitrogen-macro = { path = "../nitrogen-macro" }
+nitrogen-quic = { path = "../nitrogen-quic" }
+
+anyhow = "1"
+parking_lot = "0"
+pin-project = "1"
+
+tracing = "0"
+
+futures = "0"
+async-trait = "0"
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0", features = ["codec"] }
+
+serde = { version = "1", features = ["derive"] }
+rmp-serde = "1"
+bytes = "1"
