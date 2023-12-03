@@ -8,11 +8,17 @@ use nitrogen_utils::framed_message_pack;
 async fn main() -> Result<(), Box<dyn Error>> {
     let nitrogen = Nitrogen::new()
         .await?
-        .add_service(MyServiceImpl::NAME, |framed_io, _session| MyServiceImpl.serve(framed_message_pack(framed_io)))
+        .add_service(MyServiceImpl::NAME, {
+            |framed_io, _session, _nitrogen| MyServiceImpl.serve(framed_message_pack(framed_io))
+        })
         .serve("0.0.0.0:31234".parse()?)
         .await?;
 
     let session = nitrogen.connect("127.0.0.1:31234".parse()?).await?;
+
+    println!("local_addr: {}", session.local_addr()?);
+    println!("remote_addr: {}", session.remote_addr()?);
+
     let client = MyServiceClient::new(session);
 
     let ping = client.ping(b"Didi".to_vec()).await?;

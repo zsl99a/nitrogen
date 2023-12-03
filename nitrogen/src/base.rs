@@ -15,7 +15,7 @@ pub struct Nitrogen {
     services: Arc<Mutex<HashMap<String, ServiceHandler>>>,
 }
 
-pub type ServiceHandler = Arc<dyn Fn(FramedTokioIO<BidirectionalStream>, Session) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
+pub type ServiceHandler = Arc<dyn Fn(FramedTokioIO<BidirectionalStream>, Session, Nitrogen) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
 impl Nitrogen {
     pub async fn new() -> Result<Self, anyhow::Error> {
@@ -28,6 +28,10 @@ impl Nitrogen {
 }
 
 impl Nitrogen {
+    pub fn local_addr(&self) -> anyhow::Result<SocketAddr> {
+        Ok(self.client.local_addr()?)
+    }
+
     pub async fn connect(&self, addr: SocketAddr) -> anyhow::Result<Session> {
         if let Some(session) = self.sessions.lock().get(&addr).cloned() {
             return Ok(session);
@@ -61,12 +65,11 @@ impl Nitrogen {
         let sessions = self.sessions.clone();
         sessions.lock().insert(addr, Session::new(connection.handle()));
 
-        let services = self.services.clone();
+        let this = self.clone();
 
         tokio::spawn(async move {
             while let Ok(Some(bi_stream)) = connection.accept_bidirectional_stream().await {
-                let sessions = sessions.clone();
-                let services = services.clone();
+                let this = this.clone();
 
                 tokio::spawn(async move {
                     let mut framed_io = LengthDelimitedCodec::builder().max_frame_length(1024 * 1024 * 16).new_framed(bi_stream);
@@ -74,10 +77,10 @@ impl Nitrogen {
                     let bytes = framed_io.next().await.ok_or(anyhow::anyhow!("no message"))??;
                     let negotiate = rmp_serde::from_slice::<Negotiate>(&bytes)?;
 
-                    let service_handler = services.lock().get(&negotiate.name).ok_or(anyhow::anyhow!("no service"))?.clone();
+                    let service_handler = this.services.lock().get(&negotiate.name).ok_or(anyhow::anyhow!("no service"))?.clone();
 
-                    let session = sessions.lock().get(&addr).ok_or(anyhow::anyhow!("no session"))?.clone();
-                    service_handler(framed_io, session).await;
+                    let session = this.sessions.lock().get(&addr).ok_or(anyhow::anyhow!("no session"))?.clone();
+                    service_handler(framed_io, session, this).await;
 
                     anyhow::Result::<()>::Ok(())
                 });
@@ -93,12 +96,13 @@ impl Nitrogen {
 impl Nitrogen {
     pub fn add_service<H, Fut>(self, name: &str, handler: H) -> Self
     where
-        H: Fn(FramedTokioIO<BidirectionalStream>, Session) -> Fut + Send + Sync + 'static,
+        H: Fn(FramedTokioIO<BidirectionalStream>, Session, Nitrogen) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
-        self.services
-            .lock()
-            .insert(name.into(), Arc::new(move |bi_stream, session| handler(bi_stream, session).boxed()));
+        self.services.lock().insert(
+            name.into(),
+            Arc::new(move |bi_stream, session, nitrogen| handler(bi_stream, session, nitrogen).boxed()),
+        );
         self
     }
 
