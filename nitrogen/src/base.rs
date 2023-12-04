@@ -13,6 +13,7 @@ pub struct Nitrogen {
     client: Client,
     sessions: Arc<Mutex<HashMap<SocketAddr, Session>>>,
     services: Arc<Mutex<HashMap<String, ServiceHandler>>>,
+    server_addr: Option<SocketAddr>,
 }
 
 pub type ServiceHandler = Arc<dyn Fn(FramedTokioIO<BidirectionalStream>, Session, Nitrogen) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
@@ -23,6 +24,7 @@ impl Nitrogen {
             client: create_client("0.0.0.0:0".parse::<SocketAddr>()?).await?,
             sessions: Default::default(),
             services: Default::default(),
+            server_addr: None,
         })
     }
 }
@@ -32,21 +34,28 @@ impl Nitrogen {
         Ok(self.client.local_addr()?)
     }
 
+    pub fn server_addr(&self) -> anyhow::Result<SocketAddr> {
+        self.server_addr.ok_or(anyhow::anyhow!("no server addr"))
+    }
+
     pub async fn connect(&self, addr: SocketAddr) -> anyhow::Result<Session> {
         if let Some(session) = self.sessions.lock().get(&addr).cloned() {
             return Ok(session);
         }
 
-        let connection = self.client.connect(Connect::new(addr).with_server_name("localhost")).await?;
+        let mut connection = self.client.connect(Connect::new(addr).with_server_name("localhost")).await?;
+        connection.keep_alive(true)?;
         self.spawn_accept(connection)?;
         let session = self.sessions.lock().get(&addr).cloned().ok_or(anyhow::anyhow!("no session"))?;
         Ok(session)
     }
 
-    pub async fn serve(self, addr: SocketAddr) -> anyhow::Result<Self> {
+    pub async fn serve(mut self, addr: SocketAddr) -> anyhow::Result<Self> {
         let this = self.clone();
 
         let mut server = nitrogen_quic::create_server(addr).await?;
+
+        self.server_addr = Some(server.local_addr()?);
 
         tokio::spawn(async move {
             while let Some(connection) = server.accept().await {

@@ -1,16 +1,12 @@
 use std::error::Error;
 
-use futures::{SinkExt, StreamExt};
 use nitrogen::Nitrogen;
-use nitrogen_utils::framed_message_pack;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let nitrogen = Nitrogen::new()
         .await?
-        .add_service(MyServiceImpl::NAME, {
-            |framed_io, _session, _nitrogen| MyServiceImpl.serve(framed_message_pack(framed_io))
-        })
+        .add_service(MyServiceImpl::NAME, |framed_io, _session, _nitrogen| MyServiceImpl.serve(framed_io))
         .serve("0.0.0.0:31234".parse()?)
         .await?;
 

@@ -5,4 +5,5 @@ members = [
     "nitrogen-utils",
     "nitrogen-macro",
     "nitrogen-quic",
+    "nitrogen-extra",
 ]

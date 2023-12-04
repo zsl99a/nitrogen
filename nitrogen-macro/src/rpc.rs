@@ -143,23 +143,25 @@ fn make_response_enum(input: &ItemTrait) -> ItemEnum {
 /// #[async_trait::async_trait]
 /// pub trait MyServiceExt<Req, Resp>: MyService
 /// where
-///     Req: Send + 'static,
-///     Resp: Send + 'static,
+///     Req: serde::de::DeserializeOwned + Send + 'static,
+///     Resp: serde::Serialize + Send + 'static,
 /// {
 ///     async fn route(&self, req: Req) -> Resp;
 ///
-///     async fn serve<S>(self, framed_io: S)
+///     async fn serve<S>(self, framed_io: nitrogen::FramedTokioIO<S>)
 ///     where
-///         S: Stream<Item = Result<Message<Req>, std::io::Error>> + Sink<Message<Resp>, Error = std::io::Error> + Send + 'static,
+///         S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + 'static,
 ///     {
-///         let (sender, mut receiver) = framed_io.split();
-///         let sender = channel_sender_with_sink(sender);
-///         while let Some(Ok(Message { id, payload })) = receiver.next().await {
+///         use futures::{SinkExt, StreamExt};
+///
+///         let (sender, mut receiver) = nitrogen::framed_message_pack::<nitrogen::Message<Req>, nitrogen::Message<Resp>, S>(framed_io).split();
+///         let sender = nitrogen::channel_sender_with_sink(sender);
+///         while let Some(Ok(nitrogen::Message { id, payload })) = receiver.next().await {
 ///             let this = self.clone();
 ///             let mut sender = sender.clone();
 ///             tokio::spawn(async move {
 ///                 let payload = this.route(payload).await;
-///                 let _ = sender.send(Message { id, payload }).await;
+///                 let _ = sender.send(nitrogen::Message { id, payload }).await;
 ///             });
 ///         }
 ///     }
@@ -172,17 +174,19 @@ fn make_ext_trait(input: &ItemTrait) -> proc_macro2::TokenStream {
         #[async_trait::async_trait]
         pub trait #ext_trait_ident<Req, Resp>: #trait_ident
         where
-            Req: Send + 'static,
-            Resp: Send + 'static,
+            Req: serde::de::DeserializeOwned + Send + 'static,
+            Resp: serde::Serialize + Send + 'static,
         {
             async fn route(&self, req: Req) -> Resp;
 
-            async fn serve<S>(self, framed_io: S)
+            async fn serve<S>(self, framed_io: nitrogen::FramedTokioIO<S>)
             where
-                S: futures::Stream<Item = Result<nitrogen::Message<Req>, std::io::Error>> + futures::Sink<nitrogen::Message<Resp>, Error = std::io::Error> + Send + 'static,
+                S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + 'static,
             {
-                let (sender, mut receiver) = framed_io.split();
-                let sender = nitrogen_utils::channel_sender_with_sink(sender);
+                use futures::{SinkExt, StreamExt};
+
+                let (sender, mut receiver) = nitrogen::framed_message_pack::<nitrogen::Message<Req>, nitrogen::Message<Resp>, S>(framed_io).split();
+                let sender = nitrogen::channel_sender_with_sink(sender);
                 while let Some(Ok(nitrogen::Message { id, payload })) = receiver.next().await {
                     let this = self.clone();
                     let mut sender = sender.clone();

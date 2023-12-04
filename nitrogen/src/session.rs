@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::{net::SocketAddr, ops::Deref};
 
 use anyhow::Result;
 use futures::SinkExt;
@@ -11,6 +11,14 @@ use crate::model::Negotiate;
 #[derive(Debug, Clone)]
 pub struct Session {
     handle: Handle,
+}
+
+impl Deref for Session {
+    type Target = Handle;
+
+    fn deref(&self) -> &Self::Target {
+        &self.handle
+    }
 }
 
 impl Session {
