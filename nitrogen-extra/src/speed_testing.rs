@@ -1,9 +1,12 @@
-pub struct SpeedTestingService {}
-
-impl SpeedTestingService {
-    pub fn new() -> Self {
-        Self {}
-    }
+#[nitrogen::rpc_service]
+pub trait SpeedTestingMainService {
+    // master
+    async fn dijkstra(&self);
+    async fn upload(&self, ping_time: String);
 }
 
-impl SpeedTestingService {}
+#[nitrogen::rpc_service]
+pub trait SpeedTestingNodeService {
+    // node
+    async fn ping(&self);
+}

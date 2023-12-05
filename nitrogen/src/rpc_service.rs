@@ -30,57 +30,45 @@ where
         let mut session = self.session().clone();
 
         tokio::spawn(async move {
+            let framed_io = session.new_stream(Negotiate { name: Self::NAME.into() }).await?;
+
+            let (sender, mut receiver) = framed_message_pack::<Message<Resp>, Message<Req>, _>(framed_io).split();
+            let mut sender = channel_sender_with_sink(sender);
+
+            let mut cursor = 0;
+            let mut notifies = HashMap::new();
+
             loop {
-                let framed_io = match session.new_stream(Negotiate { name: Self::NAME.into() }).await {
-                    Ok(framed_io) => framed_io,
-                    Err(err) => {
-                        tracing::error!("{}Client::new_stream error: {}", Self::NAME, err);
-                        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                        continue;
-                    }
-                };
-
-                let (sender, mut receiver) = framed_message_pack::<Message<Resp>, Message<Req>, _>(framed_io).split();
-                let mut sender = channel_sender_with_sink(sender);
-
-                let mut cursor = 0;
-                let mut notifies = HashMap::new();
-
-                loop {
-                    tokio::select! {
-                        write = rx.next() => {
-                            if let Some((payload, notify)) = write {
-                                println!("{}Client::request: {}", Self::NAME, cursor);
-
-                                cursor += 1;
-                                let id = cursor;
-                                if let Err(err) = sender.send(Message { id, payload }).await {
-                                    tracing::error!("{}Client::request send error: {}", Self::NAME, err);
-                                    break;
-                                } else {
-                                    notifies.insert(id, notify);
-                                }
+                tokio::select! {
+                    write = rx.next() => {
+                        if let Some((payload, notify)) = write {
+                            cursor += 1;
+                            let id = cursor;
+                            if let Err(err) = sender.send(Message { id, payload }).await {
+                                tracing::error!("{}Client::request send error: {}", Self::NAME, err);
                             } else {
-                                return;
+                                notifies.insert(id, notify);
                             }
+                        } else {
+                            break;
                         }
-                        Some(result) = receiver.next() => {
-                            match result {
-                                Ok(Message { id, payload }) => {
-                                    if let Some(notify) = notifies.remove(&id) {
-                                        let _ = notify.send(payload);
-                                    }
-                                }
-                                Err(err) => {
-                                    tracing::error!("{}Client::request recv error: {}", Self::NAME, err);
-                                    break;
+                    }
+                    Some(result) = receiver.next() => {
+                        match result {
+                            Ok(Message { id, payload }) => {
+                                if let Some(notify) = notifies.remove(&id) {
+                                    let _ = notify.send(payload);
                                 }
                             }
+                            Err(err) => {
+                                tracing::error!("{}Client::request recv error: {}", Self::NAME, err);
+                            }
                         }
-                        else => break,
                     }
                 }
             }
+
+            anyhow::Result::<()>::Ok(())
         });
 
         self

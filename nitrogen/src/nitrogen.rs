@@ -1,7 +1,7 @@
 use std::{collections::HashMap, net::SocketAddr, pin::Pin, sync::Arc};
 
 use futures::{Future, FutureExt, StreamExt};
-use nitrogen_quic::{create_client, BidirectionalStream, Client, Connect, Connection};
+use nitrogen_quic::{create_client, create_server, BidirectionalStream, Client, Connect, Connection};
 use nitrogen_utils::FramedTokioIO;
 use parking_lot::Mutex;
 use tokio_util::codec::LengthDelimitedCodec;
@@ -53,7 +53,7 @@ impl Nitrogen {
     pub async fn serve(mut self, addr: SocketAddr) -> anyhow::Result<Self> {
         let this = self.clone();
 
-        let mut server = nitrogen_quic::create_server(addr).await?;
+        let mut server = create_server(addr).await?;
 
         self.server_addr = Some(server.local_addr()?);
 

@@ -44,6 +44,6 @@ impl MyService for MyServiceImpl {
     }
 
     async fn single(&self) -> String {
-        format!("|single|")
+        "|single|".to_string()
     }
 }
