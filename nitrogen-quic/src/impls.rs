@@ -18,27 +18,30 @@ use crate::quic::{create_client, create_server};
 
 // --- QuicStream ---
 
-pub struct QuicStream {
-    stream: BidirectionalStream,
+pin_project_lite::pin_project! {
+    pub struct QuicStream {
+        #[pin]
+        stream: BidirectionalStream,
+    }
 }
 
 impl tokio::io::AsyncRead for QuicStream {
     fn poll_read(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<Result<()>> {
-        Pin::new(&mut self.get_mut().stream).poll_read(cx, buf)
+        self.project().stream.poll_read(cx, buf)
     }
 }
 
 impl tokio::io::AsyncWrite for QuicStream {
     fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize>> {
-        Pin::new(&mut self.get_mut().stream).poll_write(cx, buf)
+        self.project().stream.poll_write(cx, buf)
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        Pin::new(&mut self.get_mut().stream).poll_flush(cx)
+        self.project().stream.poll_flush(cx)
     }
 
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        Pin::new(&mut self.get_mut().stream).poll_shutdown(cx)
+        self.project().stream.poll_shutdown(cx)
     }
 }
 
