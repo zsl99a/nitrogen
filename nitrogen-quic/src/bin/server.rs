@@ -1,19 +1,16 @@
 use futures::{SinkExt, StreamExt};
-use nitrogen_quic::{create_server, BidirectionalStream};
-use nitrogen_utils::{channel_sender_with_sink, framed_message_pack, FramedTokioIO};
+use nitrogen_quic::QuicListener;
+use nitrogen_utils::{channel_sender_with_sink, framed_message_pack, BiConnnectionAcceptor, BiListener, FramedTokioIO};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::LengthDelimitedCodec;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let mut server = create_server("0.0.0.0:31234".parse()?).await?;
+    let mut server = QuicListener::bind("0.0.0.0:31234".parse()?).await?;
 
-    while let Some(mut connection) = server.accept().await {
-        println!("connection id: {}", connection.id());
-
+    while let Ok(mut connection) = server.accept().await {
         tokio::spawn(async move {
-            while let Ok(Some(bi_stream)) = connection.accept_bidirectional_stream().await {
-                println!("stream id: {}", bi_stream.id());
-
+            while let Ok(bi_stream) = connection.accept().await {
                 tokio::spawn(async move {
                     let framed_io = LengthDelimitedCodec::builder().max_frame_length(1024 * 1024 * 16).new_framed(bi_stream);
 
@@ -26,7 +23,10 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn handler(framed_io: FramedTokioIO<BidirectionalStream>) -> anyhow::Result<()> {
+pub async fn handler<S>(framed_io: FramedTokioIO<S>) -> anyhow::Result<()>
+where
+    S: AsyncWrite + AsyncRead + Send + 'static,
+{
     let (sender, mut receiver) = framed_message_pack::<String, String, _>(framed_io).split();
     let mut sender = channel_sender_with_sink(sender);
 

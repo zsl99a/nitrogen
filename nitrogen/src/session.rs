@@ -1,45 +1,35 @@
-use std::{net::SocketAddr, ops::Deref};
+use std::ops::Deref;
 
 use anyhow::Result;
 use futures::SinkExt;
-use nitrogen_quic::{BidirectionalStream, Handle};
-use nitrogen_utils::FramedTokioIO;
+use nitrogen_quic::{QuicConnectionOpener, QuicStream};
+use nitrogen_utils::{BiConnnectionOpener, FramedTokioIO};
 use tokio_util::codec::LengthDelimitedCodec;
 
 use crate::model::Negotiate;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Session {
-    handle: Handle,
+    opener: QuicConnectionOpener,
 }
 
 impl Deref for Session {
-    type Target = Handle;
+    type Target = QuicConnectionOpener;
 
     fn deref(&self) -> &Self::Target {
-        &self.handle
+        &self.opener
     }
 }
 
 impl Session {
-    pub fn new(handle: Handle) -> Self {
-        Self { handle }
+    pub fn new(opener: QuicConnectionOpener) -> Self {
+        Self { opener }
     }
 
-    pub async fn new_stream(&mut self, negotiate: Negotiate) -> Result<FramedTokioIO<BidirectionalStream>> {
-        let bi_stream = self.handle.open_bidirectional_stream().await?;
+    pub async fn new_stream(&mut self, negotiate: Negotiate) -> Result<FramedTokioIO<QuicStream>> {
+        let bi_stream = self.opener.open().await?;
         let mut framed_io = LengthDelimitedCodec::builder().max_frame_length(1024 * 1024 * 16).new_framed(bi_stream);
         framed_io.send(rmp_serde::to_vec(&negotiate)?.into()).await?;
         Ok(framed_io)
     }
-
-    pub fn local_addr(&self) -> Result<SocketAddr> {
-        Ok(self.handle.local_addr()?)
-    }
-
-    pub fn remote_addr(&self) -> Result<SocketAddr> {
-        Ok(self.handle.remote_addr()?)
-    }
 }
-
-impl Session {}

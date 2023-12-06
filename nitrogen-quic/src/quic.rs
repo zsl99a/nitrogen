@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 use s2n_quic::{provider::event::default::Subscriber, Client, Server};
 
-use crate::MtlsProvider;
+use crate::mtls::MtlsProvider;
 
 pub static CA_CERT_PEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/certs/ca.crt");
 pub static MY_CERT_PEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/certs/server.crt");
