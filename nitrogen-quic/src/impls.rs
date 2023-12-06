@@ -16,6 +16,8 @@ use tokio::io::ReadBuf;
 
 use crate::quic::{create_client, create_server};
 
+// --- QuicStream ---
+
 pub struct QuicStream {
     stream: BidirectionalStream,
 }
@@ -49,6 +51,8 @@ impl BiStreamSplit for QuicStream {
         (recv, send)
     }
 }
+
+// --- QuicConnection ---
 
 pub struct QuicConnection {
     connection: Connection,
@@ -84,6 +88,8 @@ impl BiConnnectionSplit for QuicConnection {
     }
 }
 
+// --- QuicConnectionAcceptor ---
+
 pub struct QuicConnectionAcceptor {
     acceptor: StreamAcceptor,
 }
@@ -97,6 +103,8 @@ impl BiConnnectionAcceptor for QuicConnectionAcceptor {
         Ok(QuicStream { stream })
     }
 }
+
+// --- QuicConnectionOpener ---
 
 #[derive(Clone)]
 pub struct QuicConnectionOpener {
@@ -113,14 +121,16 @@ impl BiConnnectionOpener for QuicConnectionOpener {
     }
 }
 
+// --- QuicListener ---
+
 pub struct QuicListener {
-    listener: Server,
+    server: Server,
 }
 
 impl QuicListener {
     pub async fn bind(addr: std::net::SocketAddr) -> anyhow::Result<Self> {
-        let listener = create_server(addr).await?;
-        Ok(Self { listener })
+        let server = create_server(addr).await?;
+        Ok(Self { server })
     }
 }
 
@@ -129,19 +139,21 @@ impl BiListener for QuicListener {
     type Connection = QuicConnection;
 
     async fn accept(&mut self) -> anyhow::Result<Self::Connection> {
-        let connection = self.listener.accept().await.ok_or(anyhow::anyhow!("no connection"))?;
+        let connection = self.server.accept().await.ok_or(anyhow::anyhow!("no connection"))?;
         Ok(QuicConnection { connection })
     }
 }
 
+// --- QuicConnect ---
+
 pub struct QuicConnect {
-    connect: Client,
+    client: Client,
 }
 
 impl QuicConnect {
     pub async fn bind(addr: std::net::SocketAddr) -> anyhow::Result<Self> {
-        let connect = create_client(addr).await?;
-        Ok(Self { connect })
+        let client = create_client(addr).await?;
+        Ok(Self { client })
     }
 }
 
@@ -150,7 +162,7 @@ impl BiConnect for QuicConnect {
     type Connection = QuicConnection;
 
     async fn connect(&mut self, addr: std::net::SocketAddr) -> anyhow::Result<Self::Connection> {
-        let connection = self.connect.connect(Connect::new(addr).with_server_name("localhost")).await?;
+        let connection = self.client.connect(Connect::new(addr).with_server_name("localhost")).await?;
         Ok(QuicConnection { connection })
     }
 }
