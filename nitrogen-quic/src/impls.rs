@@ -149,6 +149,7 @@ impl BiListener for QuicListener {
 
 // --- QuicConnect ---
 
+#[derive(Clone)]
 pub struct QuicConnect {
     client: Client,
 }

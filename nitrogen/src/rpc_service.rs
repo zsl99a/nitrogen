@@ -5,9 +5,29 @@ use futures::{
     SinkExt, StreamExt,
 };
 use nitrogen_utils::{channel_sender_with_sink, framed_message_pack};
+use serde::{Deserialize, Serialize};
 use tokio_util::codec::LengthDelimitedCodec;
 
-use crate::{Error, Message, Result};
+// --- Message ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Message<T> {
+    pub id: u64,
+    pub payload: T,
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Error(pub String);
+
+impl std::error::Error for Error {}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Nitrogen Error: {}", self.0)
+    }
+}
 
 // RpcServiceClient 通过 rpc_service 自动实现
 

@@ -1,8 +1,7 @@
 use std::time::Duration;
 
-use nitrogen::{BiConnect, BiConnnectionAcceptor, BiConnnectionSplit, BiListener};
+use nitrogen::{BiConnect, BiConnnectionAcceptor, BiConnnectionOpener, BiConnnectionSplit, BiListener, Negotiator, RpcServiceClient};
 use nitrogen_quic::{QuicConnect, QuicListener};
-use nitrogen_utils::BiConnnectionOpener;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -17,13 +16,29 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn server() -> anyhow::Result<()> {
+    let client = QuicConnect::bind("0.0.0.0:0".parse()?).await?;
     let mut server = QuicListener::bind("0.0.0.0:31234".parse()?).await?;
 
     while let Ok(connection) = server.accept().await {
+        let client = client.clone();
         let (_opener, mut acceptor) = connection.split();
+
         tokio::spawn(async move {
-            while let Ok(bi_stream) = acceptor.accept().await {
-                tokio::spawn(MyServiceImpl.serve(bi_stream));
+            while let Ok(mut bi_stream) = acceptor.accept().await {
+                let _client = client.clone();
+
+                tokio::spawn(async move {
+                    let service_name = Negotiator::<String>::new().recv(&mut bi_stream).await?;
+
+                    match service_name.as_str() {
+                        MyServiceImpl::NAME => MyServiceImpl.serve(bi_stream).await,
+                        _ => {
+                            anyhow::bail!("unknown service: {}", service_name)
+                        }
+                    }
+
+                    Ok::<(), anyhow::Error>(())
+                });
             }
         });
     }
@@ -35,9 +50,11 @@ async fn client() -> anyhow::Result<()> {
     let mut client = QuicConnect::bind("0.0.0.0:0".parse()?).await?;
 
     let mut connect = client.connect("127.0.0.1:31234".parse()?).await?;
-    let stream = connect.open().await?;
-    let svc_client = MyServiceClient::new(stream);
+    let mut stream = connect.open().await?;
 
+    Negotiator::<String>::new().send(&mut stream, MyServiceClient::NAME.into()).await?;
+
+    let svc_client = MyServiceClient::new(stream);
     let msg = svc_client.ping(vec![1, 2, 3]).await?;
     println!("ping: {}", msg);
 

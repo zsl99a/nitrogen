@@ -8,7 +8,6 @@ edition = "2021"
 [dependencies]
 nitrogen-utils = { path = "../nitrogen-utils" }
 nitrogen-macro = { path = "../nitrogen-macro" }
-nitrogen-quic = { path = "../nitrogen-quic" }
 
 anyhow = "1"
 parking_lot = "0"
