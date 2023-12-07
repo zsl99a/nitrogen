@@ -179,12 +179,13 @@ fn make_ext_trait(input: &ItemTrait) -> proc_macro2::TokenStream {
         {
             async fn route(&self, req: Req) -> Resp;
 
-            async fn serve<S>(self, framed_io: nitrogen::FramedTokioIO<S>)
+            async fn serve<S>(self, stream: S)
             where
                 S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + 'static,
             {
                 use futures::{SinkExt, StreamExt};
 
+                let framed_io = tokio_util::codec::LengthDelimitedCodec::builder().max_frame_length(1024 * 1024 * 16).new_framed(stream);
                 let (sender, mut receiver) = nitrogen::framed_message_pack::<nitrogen::Message<Req>, nitrogen::Message<Resp>, S>(framed_io).split();
                 let sender = nitrogen::channel_sender_with_sink(sender);
                 while let Some(Ok(nitrogen::Message { id, payload })) = receiver.next().await {
@@ -272,7 +273,6 @@ fn make_ext_impl(input: &ItemTrait) -> proc_macro2::TokenStream {
 /// #[derive(Clone)]
 /// pub struct MyServiceClient {
 ///     tx: futures::channel::mpsc::Sender<(MyServiceRequest, futures::channel::oneshot::Sender<MyServiceResponse>)>,
-///     session: nitrogen::Session,
 /// }
 fn make_client_struct(input: &ItemTrait) -> proc_macro2::TokenStream {
     let client_ident = make_client_ident(input);
@@ -283,14 +283,16 @@ fn make_client_struct(input: &ItemTrait) -> proc_macro2::TokenStream {
         #[derive(Clone)]
         pub struct #client_ident {
             tx: futures::channel::mpsc::Sender<(#request_enum_ident, futures::channel::oneshot::Sender<#response_enum_ident>)>,
-            session: nitrogen::Session,
         }
     );
 
     output
 }
 
-/// impl MyServiceClient {
+/// impl MyServiceClient
+/// where
+///     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + 'static,
+/// {
 ///     pub fn new(session: Session) -> Self {
 ///         use futures::channel::{mpsc, oneshot};
 ///         use nitrogen::RpcServiceClient;
@@ -305,11 +307,14 @@ fn make_client_impl_new(input: &ItemTrait) -> proc_macro2::TokenStream {
 
     let output = quote!(
         impl #client_ident {
-            pub fn new(session: nitrogen::Session) -> Self {
+            pub fn new<S>(stream: S) -> Self
+            where
+                S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + 'static,
+             {
                 use futures::channel::{mpsc, oneshot};
                 use nitrogen::RpcServiceClient;
                 let (tx, rx) = mpsc::channel::<(#request_enum_ident, oneshot::Sender<#response_enum_ident>)>(128);
-                Self { tx, session }.spawn(rx)
+                Self { tx }.spawn(rx, stream)
             }
         }
     );
@@ -319,12 +324,9 @@ fn make_client_impl_new(input: &ItemTrait) -> proc_macro2::TokenStream {
 
 /// impl nitrogen::RpcServiceClient<MyServiceRequest, MyServiceResponse> for MyServiceClient {
 ///     const NAME: &'static str = "MyService";
+///
 ///     fn tx(&self) -> futures::channel::mpsc::Sender<(MyServiceRequest, futures::channel::oneshot::Sender<MyServiceResponse>)> {
 ///         self.tx.clone()
-///     }
-///
-///     fn session(&self) -> &nitrogen::Session {
-///         &self.session
 ///     }
 /// }
 fn make_client_impl_trait(input: &ItemTrait) -> proc_macro2::TokenStream {
@@ -336,12 +338,9 @@ fn make_client_impl_trait(input: &ItemTrait) -> proc_macro2::TokenStream {
     let output = quote!(
         impl nitrogen::RpcServiceClient<#request_enum_ident, #response_enum_ident> for #client_ident {
             const NAME: &'static str = stringify!(#trait_ident);
+
             fn tx(&self) -> futures::channel::mpsc::Sender<(#request_enum_ident, futures::channel::oneshot::Sender<#response_enum_ident>)> {
                 self.tx.clone()
-            }
-
-            fn session(&self) -> &nitrogen::Session {
-                &self.session
             }
         }
     );

@@ -29,21 +29,21 @@ pub trait BiConnnectionAcceptor {
 
 #[async_trait]
 pub trait BiConnnectionOpener {
-    type Stream: AsyncRead + AsyncWrite;
+    type Stream: AsyncRead + AsyncWrite + Send + Unpin + 'static;
 
     async fn open(&mut self) -> anyhow::Result<Self::Stream>;
 }
 
 pub trait BiConnnectionSplit {
-    type Acceptor: BiConnnectionAcceptor;
     type Opener: BiConnnectionOpener;
+    type Acceptor: BiConnnectionAcceptor;
 
-    fn split(self) -> (Self::Acceptor, Self::Opener);
+    fn split(self) -> (Self::Opener, Self::Acceptor);
 }
 
 pub trait BiStreamSplit {
-    type Read: AsyncRead;
     type Write: AsyncWrite;
+    type Read: AsyncRead;
 
-    fn split(self) -> (Self::Read, Self::Write);
+    fn split(self) -> (Self::Write, Self::Read);
 }

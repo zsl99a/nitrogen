@@ -5,8 +5,9 @@ use futures::{
     SinkExt, StreamExt,
 };
 use nitrogen_utils::{channel_sender_with_sink, framed_message_pack};
+use tokio_util::codec::LengthDelimitedCodec;
 
-use crate::{Error, Message, Negotiate, Result, Session};
+use crate::{Error, Message, Result};
 
 // RpcServiceClient 通过 rpc_service 自动实现
 
@@ -20,17 +21,14 @@ where
 
     fn tx(&self) -> mpsc::Sender<(Req, oneshot::Sender<Resp>)>;
 
-    fn session(&self) -> &Session;
-
     #[doc(hidden)]
-    fn spawn(self, mut rx: mpsc::Receiver<(Req, oneshot::Sender<Resp>)>) -> Self
+    fn spawn<S>(self, mut rx: mpsc::Receiver<(Req, oneshot::Sender<Resp>)>, stream: S) -> Self
     where
         Self: Sized,
+        S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + 'static,
     {
-        let mut session = self.session().clone();
-
         tokio::spawn(async move {
-            let framed_io = session.new_stream(Negotiate { name: Self::NAME.into() }).await?;
+            let framed_io = LengthDelimitedCodec::builder().max_frame_length(1024 * 1024 * 16).new_framed(stream);
 
             let (sender, mut receiver) = framed_message_pack::<Message<Resp>, Message<Req>, _>(framed_io).split();
             let mut sender = channel_sender_with_sink(sender);

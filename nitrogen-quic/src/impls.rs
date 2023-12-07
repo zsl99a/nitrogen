@@ -46,12 +46,12 @@ impl tokio::io::AsyncWrite for QuicStream {
 }
 
 impl BiStreamSplit for QuicStream {
-    type Read = ReceiveStream;
     type Write = SendStream;
+    type Read = ReceiveStream;
 
-    fn split(self) -> (Self::Read, Self::Write) {
+    fn split(self) -> (Self::Write, Self::Read) {
         let (recv, send) = self.stream.split();
-        (recv, send)
+        (send, recv)
     }
 }
 
@@ -82,12 +82,12 @@ impl BiConnnectionOpener for QuicConnection {
 }
 
 impl BiConnnectionSplit for QuicConnection {
-    type Acceptor = QuicConnectionAcceptor;
     type Opener = QuicConnectionOpener;
+    type Acceptor = QuicConnectionAcceptor;
 
-    fn split(self) -> (Self::Acceptor, Self::Opener) {
+    fn split(self) -> (Self::Opener, Self::Acceptor) {
         let (opener, acceptor) = self.connection.split();
-        (QuicConnectionAcceptor { acceptor }, QuicConnectionOpener { opener })
+        (QuicConnectionOpener { opener }, QuicConnectionAcceptor { acceptor })
     }
 }
 
